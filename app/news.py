@@ -1,43 +1,31 @@
-from pygooglenews import GoogleNews
-from newspaper import Article
+# news.py
+import feedparser
+import urllib.parse
+from datetime import datetime
+from typing import List, Dict
 
-def get_company_news(query: str, limit: int = 5):
-    """
-    Fetches company-related news articles using Google News and newspaper3k.
-    
-    Args:
-        query (str): Search query (usually company name + ticker).
-        limit (int): Max number of articles to return.
+def _fmt_published(entry) -> str:
+    # feedparser returns 'published' or 'updated' depending on feed
+    ts = entry.get("published") or entry.get("updated") or ""
+    return ts
 
-    Returns:
-        list[dict]: Each dict has title, publisher, link, published, summary, top_image.
+def get_company_news(query: str, *, limit: int = 10) -> List[Dict]:
     """
-    gn = GoogleNews(lang="en", country="US")
-    res = gn.search(query) or {}
+    Fetch top recent news from Google News RSS for a given company name/ticker.
+    Returns a list of dicts with: title, link, publisher, published, summary.
+    """
+    q = urllib.parse.quote(query)
+    # language & region can be adjusted; here we use English/US
+    url = f"https://news.google.com/rss/search?q={q}&hl=en-US&gl=US&ceid=US:en"
+    feed = feedparser.parse(url)
+
     items = []
-    for e in (res.get("entries") or [])[:limit]:
-        try:
-            art = Article(e.link)
-            art.download()
-            art.parse()
-            art.nlp()
-            items.append({
-                "title": e.title,
-                "publisher": e.source.get("title") if hasattr(e, "source") else None,
-                "link": e.link,
-                "published": e.published,
-                "summary": art.summary,
-                "top_image": art.top_image,
-            })
-        except Exception:
-            items.append({
-                "title": getattr(e, "title", query),
-                "publisher": None,
-                "link": getattr(e, "link", ""),
-                "published": getattr(e, "published", ""),
-                "summary": None,
-                "top_image": None,
-            })
+    for entry in feed.entries[:limit]:
+        items.append({
+            "title": entry.get("title", ""),
+            "link": entry.get("link", ""),
+            "publisher": getattr(entry, "source", {}).get("title", "") if hasattr(entry, "source") else "",
+            "published": _fmt_published(entry),
+            "summary": entry.get("summary", ""),  # often short; safe to show or omit
+        })
     return items
-
-    
