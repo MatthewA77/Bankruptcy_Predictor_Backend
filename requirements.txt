@@ -1,0 +1,12 @@
+fastapi
+uvicorn[standard]
+pydantic
+joblib
+numpy
+pandas
+yfinance
+shap
+matplotlib
+pygooglenews
+newspaper3k
+nltk
