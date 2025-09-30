@@ -1,0 +1,16 @@
+# Python cache / compiled files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual environment
+.venv/
+env/
+venv/
+
+# IDE / editor junk
+.vscode/
+.idea/
+
+# OS junk
+.DS_Store

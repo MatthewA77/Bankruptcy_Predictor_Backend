@@ -461,7 +461,17 @@ def _shap_bar_png_from_df(df: pd.DataFrame) -> bytes:
 
 def get_ticker_object(ticker: str):
     """Return a yfinance Ticker object."""
-    return yf.Ticker(ticker)
+    t = yf.Ticker(ticker)
+
+    # yfinance will always return an object, so check if it has data
+    try:
+        info = t.info
+        if not info or "regularMarketPrice" not in info:
+            return None
+    except Exception:
+        return None
+
+    return t
 
 def get_company_details(ticker: str) -> dict:
     """Return normalized company metadata from yfinance.info."""
@@ -487,6 +497,8 @@ def get_company_details(ticker: str) -> dict:
         "summary": info.get("longBusinessSummary", "N/A"),
         # keep shortName too (handy for news)
         "shortName": info.get("shortName", None),
+        "marketCap": info.get("marketCap", None),
+        "trailingPE": info.get("trailingPE", None),
     }
 
 # -----------------------------------------------------------------------------

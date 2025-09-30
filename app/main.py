@@ -1,17 +1,85 @@
 import os
-from fastapi import FastAPI, HTTPException, Response
+from fastapi import FastAPI, HTTPException, Response, APIRouter
 from pydantic import BaseModel
 from .inference import build_features_for_ticker_df, get_company_details, predict_from_features, shap_bar_png, get_ticker_object, shap_contributions_json
 from .news import get_company_news
 from fastapi.responses import JSONResponse
+import yfinance as yf
+from typing import List, Dict, Optional, Tuple
 
 app = FastAPI(title="Bankruptcy Predictor API")
+router = APIRouter()
 
 class PredictTickerInput(BaseModel):
     ticker: str
 
 class PredictManualInput(BaseModel):
-    features: dict  # keys must match feature columns
+    features: dict
+
+class DebugFeaturesResponse(BaseModel):
+    columns: List[str]
+    values: Dict[str, float]
+
+class CompanyBrief(BaseModel):
+    symbol: str
+    shortName: Optional[str] = None
+    longName: Optional[str] = None
+    industry: Optional[str] = None
+    sector: Optional[str] = None
+    country: Optional[str] = None
+    website: Optional[str] = None
+    ceo: Optional[str] = None
+    summary: Optional[str] = None
+    longBusinessSummary: Optional[str] = None
+
+class PredictResponse(BaseModel):
+    ticker: str
+    probability: float
+    top_contributions: List[Tuple[str, float]]
+    company: Optional[CompanyBrief] = None
+    news: Optional[list] = None
+
+class NewsItemModel(BaseModel):
+    title: str
+    link: str
+    publisher: Optional[str] = None
+    published: Optional[str] = None
+    summary: Optional[str] = None
+
+def _resolve_ticker_or_404(ticker: str):
+    t = get_ticker_object(ticker)
+    if t is None:
+        raise HTTPException(status_code=404, detail=f"Ticker '{ticker}' not found")
+    return t
+
+
+@router.get("/debug/features", response_model=DebugFeaturesResponse)
+def debug_features(ticker: str):
+    _resolve_ticker_or_404(ticker)
+
+    df = build_features_for_ticker_df(ticker)
+    if df is None or df.empty:
+        raise HTTPException(status_code=404, detail=f"No financial statements for '{ticker}'")
+
+    if not df.to_numpy().any():
+        raise HTTPException(status_code=404, detail=f"No usable features for '{ticker}'")
+
+    return DebugFeaturesResponse(
+        columns=list(df.columns),
+        values=df.iloc[0].to_dict()
+    )
+
+@router.get("/news/{ticker}", response_model=List[NewsItemModel])
+def news_for_ticker(ticker: str):
+    t = _resolve_ticker_or_404(ticker)
+    try:
+        info = t.info or {}
+    except Exception:
+        info = {}
+    query = info.get("shortName") or ticker.strip().upper()
+
+    items = get_company_news(query)
+    return items or []
 
 @app.get("/health")
 def health():
@@ -21,8 +89,9 @@ def health():
 def predict_ticker(inp: PredictTickerInput):
     try:
         ticker = inp.ticker.upper().strip()
-        if not ticker:
-            raise HTTPException(status_code=400, detail="Missing ticker.")
+        yfTicker = get_ticker_object(ticker)
+        if not ticker or yfTicker is None:
+            raise HTTPException(status_code=400, detail=f"Ticker {ticker} not found.")
 
         # 1) Predict
         df = build_features_for_ticker_df(ticker)
@@ -53,7 +122,6 @@ def predict_ticker(inp: PredictTickerInput):
     except HTTPException:
         raise
     except Exception as e:
-        # while debugging, you may want to expose str(e); for prod keep it generic
         raise HTTPException(status_code=500, detail=f"Prediction failed: {e}")
 
 @app.post("/predict/manual")
@@ -76,7 +144,7 @@ def debug_features(ticker: str):
 @app.get("/debug/model")
 def debug_model():
     from .inference import _ensure_models_loaded, _scaler
-    _ensure_models_loaded()  # <-- required
+    _ensure_models_loaded()
     names = getattr(_scaler, "feature_names_in_", None)
     return {
         "loaded": _scaler is not None,
@@ -160,12 +228,13 @@ from fastapi.middleware.cors import CORSMiddleware
 
 origins = [
     "http://localhost:3000",
-    # "https://your-frontend.vercel.app",  # replace with your Vercel URL
+    "https://matta779-bankruptcy-predictor-backend.hf.space",
+    "https://bankruptcy-predictor-frontend.vercel.app/",
 ]
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

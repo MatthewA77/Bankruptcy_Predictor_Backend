@@ -7,6 +7,5 @@ pandas
 yfinance
 shap
 matplotlib
-pygooglenews
-newspaper3k
-nltk
+feedparser==6.0.10
+requests
