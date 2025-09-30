@@ -124,7 +124,7 @@ FEATURE_DEFINITIONS = {
     "Degree of Financial Leverage (DFL)": "Measures the sensitivity of a company's earnings per share to fluctuations in its operating income, as a result of changes in its capital structure. A high DFL means a small change in operating income will lead to a large change in earnings.",
     "Interest Expense Ratio": "Calculated as Interest Expense / Total Revenue. This ratio shows the proportion of a company's revenue that is used to pay the interest on its debt."
 }
-FEATURE_LIST = list(FEATURE_DEFINITIONS.keys())  # used to build the raw DF (we'll map to training names)
+FEATURE_LIST = list(FEATURE_DEFINITIONS.keys())
 
 
 # -----------------------------------------------------------------------------
@@ -251,7 +251,6 @@ def _map_data_to_features_for_year(
     }
 
     def _resolve(k: str):
-        # try exact, then strip, then strip + remove "(Yuan ¥)"
         v = feature_mapping.get(k)
         if v is not None: return v
         ks = k.strip()
@@ -265,15 +264,14 @@ def _map_data_to_features_for_year(
 
 
 def _build_feature_frame_for_ticker(ticker: str) -> pd.DataFrame:
-    _ensure_models_loaded()  # <-- ensure _top_features is loaded
-    needed_names = _needed_feature_names()  # prefers top_10_features.joblib
+    _ensure_models_loaded()
+    needed_names = _needed_feature_names()
 
     info, income_stmt, balance_sheet, q_earn = _fetch_raw_financials(ticker)
     year_col, prev_col = _pick_latest_year_col(balance_sheet)
     if year_col is None:
         year_col, prev_col = _pick_latest_year_col(income_stmt)
     if year_col is None:
-        # build an all-zero row with the exact training names
         return pd.DataFrame([[0.0]*len(needed_names)], columns=needed_names)
 
     df = _map_data_to_features_for_year(
@@ -281,7 +279,7 @@ def _build_feature_frame_for_ticker(ticker: str) -> pd.DataFrame:
         income_stmt=income_stmt if income_stmt is not None else pd.DataFrame(),
         balance_sheet=balance_sheet if balance_sheet is not None else pd.DataFrame(),
         quarterly_earnings=q_earn if q_earn is not None else pd.DataFrame(),
-        feature_list=needed_names,   # <-- use training names here
+        feature_list=needed_names,
         year_col=year_col,
         prev_year_col=prev_col
     )
@@ -299,14 +297,12 @@ def _decide_final_order(df_cols: list[str]) -> list[str]:
     else the saved top_10_features, else the fallback. Also ensure shape matches model/scaler.
     """
     _ensure_models_loaded()
-    top_names = _needed_feature_names()          # prefers top_10_features.joblib
+    top_names = _needed_feature_names()
     scaler_names = _scaler_names()
 
-    # If scaler exposes names, they’re the ground truth for transform()
     if scaler_names:
         return scaler_names
 
-    # Otherwise trust training top_10 list
     return top_names
 
 def _pick_pos_class_index():
@@ -352,10 +348,8 @@ def _extract_shap_row(shap_values, sample_index: int = 0) -> np.ndarray:
         return np.asarray(row)
 
     if arr.ndim == 2:
-        # (n_samples, n_features)
         return np.asarray(arr[sample_index])
 
-    # Unexpected: try best-effort squeeze to 1D
     row = np.squeeze(arr)
     if row.ndim != 1:
         row = row.reshape(-1)
